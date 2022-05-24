@@ -4,6 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
+termcolor = "*"
+pytesseract = "*"
+pillow = "*"
+numpy = "*"
+"pdfminer.six" = "*"
+opencv-python-headless = "*"
 
 [dev-packages]
 
