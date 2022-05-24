@@ -1,8 +1,10 @@
-import sys, re, subprocess
+import sys, re, subprocess, json
 from termcolor import colored
 
 from PIL import Image as PImage, ImageDraw, ImageColor
 import pytesseract
+import cv2 as cv
+import numpy as np
 
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextBoxHorizontal
@@ -34,22 +36,44 @@ class SpecificationImage(Image):
   def __init__(self, specPath):
     super().__init__()
     self.specPath = specPath
-    self.filePath = "tmp/tmpName."
-    self.renderFile("png")
+    self.modifiedSpecPath = "tmp/modifiedSpec.json"
+    self.filePath = "tmp/specImage."
+
+    with open(self.specPath) as spec:
+      self.spec = json.load(spec)
+      with open(self.modifiedSpecPath, "w") as modSpec:
+        modSpec.truncate()
+        json.dump(self.spec, modSpec)
+        modSpec.close()
+      spec.close()
+
+    self.renderFile()
     self.originalImage = PImage.open(self.filePath + "png")
     self.image = self.originalImage.copy()
+
 
   def getImagePath(self, fileFormat):
     self.renderFile(fileFormat)
     return self.filePath + fileFormat
 
-  def renderFile(self, fileFormat):
+  def getOriginalSpec(self):
+    return self.spec
+
+  def setSpec(self, spec):
+    self.spec = spec
+    with open(self.modifiedSpecPath, "w") as specFile:
+      specFile.truncate()
+      json.dump(spec, specFile)
+      specFile.close()
+
+  def renderFile(self, fileFormat="png"):
     subprocess.run([
       "vl2" + fileFormat, # cli tool for rendering vega-lite specs
-      self.specPath, # path to the specification
+      self.modifiedSpecPath, # path to the specification
       self.filePath + fileFormat, # temporary output path
       "-s 4" # scale
     ])
+    self.image = PImage.open(self.filePath + "png")
 
 
 class OriginalImage(Image):
@@ -59,6 +83,69 @@ class OriginalImage(Image):
     self.originalImage = PImage.open(self.imagePath)
     self.image = self.originalImage.copy()
 
+
+
+class ColorStep(object):
+  def __init__(self, specImg, origImg):
+    self.specImg = specImg
+    self.origImg = origImg
+    self.themes = [
+      "default",
+      "dark",
+      "excel",
+      "fivethirtyeight",
+      "ggplot2",
+      "googlecharts",
+      "latimes",
+      "quartz",
+      "urbaninstitute",
+      "vox"
+    ]
+
+  def getTheme(self, theme):
+    with open("vega-themes/{0}.json".format(theme)) as theme:
+      parsed = json.load(theme)
+      theme.close()
+      return parsed
+
+  def applyTheme(self, theme):
+    themeDict = self.getTheme(theme)
+    spec = self.specImg.getOriginalSpec()
+    spec['config'] = themeDict
+    self.specImg.setSpec(spec)
+    self.specImg.renderFile()
+
+  def getHistogram(self, image):
+    # https://docs.opencv.org/3.4/d8/dc8/tutorial_histogram_comparison.html
+    img = cv.cvtColor(np.array(image), cv.COLOR_RGB2BGR)
+    histogram = cv.calcHist([img],[0,1,2], None, [256,256,256], [0,256,0,256,0,256])
+    cv.normalize(histogram, histogram, alpha=0, beta=1, norm_type=cv.NORM_MINMAX)
+    return histogram
+
+  def main(self):
+
+    originalImage = self.origImg.getImage()
+    origHistogram = self.getHistogram(originalImage)
+
+    bestScore = 0
+    bestTheme = None
+    for i, theme in enumerate(self.themes):
+      self.applyTheme(theme)
+      specificationImage = self.specImg.getImage()
+      specHistogram = self.getHistogram(specificationImage)
+
+      # Method: Correlation
+      score = cv.compareHist(origHistogram, specHistogram, 0)
+      # for compare_method in range(4):
+      #   score = cv.compareHist(origHistogram, specHistogram, compare_method)
+
+      print("Comparing {0} with a score of {1}".format(theme, score))
+
+      if score > bestScore:
+        bestScore = score
+        bestTheme = theme
+
+    self.applyTheme(bestTheme)
 
 
 
@@ -142,7 +229,7 @@ class TextStep(object):
           if origBox['value'] in specBox['value']:
             matchedWords += 1
           else:
-            print(origBox['value'] + " != " + specBox['value'])
+            # print(origBox['value'] + " != " + specBox['value'])
             specDraw.rectangle(
               [
                 specBox['x0'],
@@ -167,8 +254,8 @@ class TextStep(object):
 
     specPrev = PImage.alpha_composite(specBase, specOverlay)
     origPrev = PImage.alpha_composite(origBase, origOverlay)
-    specPrev.show()
-    origPrev.show()
+    # specPrev.show()
+    # origPrev.show()
 
     print("{0}% match".format(matchedWords*100/totalWords))
 
@@ -263,7 +350,7 @@ class TextStep(object):
         fill=colors[index]
       )
 
-    workingCopy.show()
+    # workingCopy.show()
 
     image.setImage(workingCopy)
 
@@ -276,12 +363,14 @@ def main(args):
   specImg = SpecificationImage(args[0])
   origImg = OriginalImage(args[1])
 
+  colorStep = ColorStep(specImg, origImg)
+  colorStep.main()
 
   textStep = TextStep(specImg, origImg)
   textStep.main()
 
-  # origImg.getImage().show()
-  # specImg.getImage().show()
+  origImg.getImage().show()
+  specImg.getImage().show()
 
 
 
