@@ -10,6 +10,7 @@ pillow = "*"
 numpy = "*"
 "pdfminer.six" = "*"
 opencv-python-headless = "*"
+argparse = "*"
 
 [dev-packages]
 

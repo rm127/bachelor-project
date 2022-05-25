@@ -1,5 +1,6 @@
 import sys, re, subprocess, json
 from termcolor import colored
+import argparse
 
 from PIL import Image as PImage, ImageDraw, ImageColor
 import pytesseract
@@ -358,10 +359,10 @@ class TextStep(object):
 
 
 
-def main(args):
+def program(specPath, visPath):
   # init both images
-  specImg = SpecificationImage(args[0])
-  origImg = OriginalImage(args[1])
+  specImg = SpecificationImage(specPath)
+  origImg = OriginalImage(visPath)
 
   colorStep = ColorStep(specImg, origImg)
   colorStep.main()
@@ -375,9 +376,12 @@ def main(args):
 
 
 if __name__ == '__main__':
-  if len(sys.argv) < 3:
-    print(colored("Usage: cmd <specification path> <image path>", 'white'))
-  else:
-    args = sys.argv
-    args.pop(0)
-    main(args)
+  parser = argparse.ArgumentParser(description='Validate a data visualization against a Vega-Lite specification.')
+  parser.add_argument('-s', '--spec', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
+  parser.add_argument('-v', '--vis', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
+
+  args = parser.parse_args()
+  specPath = args.spec[0].name
+  visPath = args.vis[0].name
+
+  program(specPath, visPath)
