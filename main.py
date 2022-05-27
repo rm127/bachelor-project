@@ -63,7 +63,7 @@ class SpecificationImage(Image):
     self.renderFile(fileFormat)
     return self.filePath + fileFormat
 
-  def getOriginalSpec(self):
+  def getSpec(self):
     return self.spec
 
   def setSpec(self, spec):
@@ -92,6 +92,47 @@ class OriginalImage(Image):
 
 
 
+
+class DimensionsStep(object):
+  def __init__(self, specImg, origImg):
+    self.specImg = specImg
+    self.origImg = origImg
+
+  def main(self):
+    log.info("Running DimensionsStep...")
+    origWidth, origHeight = self.getImgDimensions(self.origImg)
+    log.debug("Size of original image {0}x{1}".format(origWidth, origHeight))
+
+    self.renderSpecImageWithDimensions(origWidth, origHeight)
+
+    specWidth, specHeight = self.getImgDimensions(self.specImg)
+    log.debug("Size of modified spec image {0}x{1}".format(specWidth, specHeight))
+
+    widthDiff = specWidth - origWidth
+    heightDiff = specHeight - origHeight
+
+    log.info("Image differs by {0} in width and {1} in height".format(widthDiff, heightDiff))
+
+    newWidth = origWidth - widthDiff
+    newHeight = origHeight - heightDiff
+
+    log.info("Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
+
+    # self.renderSpecImageWithDimensions(newWidth, newHeight)
+
+  def getImgDimensions(self, img):
+    size = img.getImage().size
+    return size[0], size[1]
+
+  def renderSpecImageWithDimensions(self, width, height):
+    spec = self.specImg.getSpec()
+    spec['width'] = width
+    spec['height'] = height
+    self.specImg.setSpec(spec)
+    self.specImg.renderFile()
+
+
+
 class ColorStep(object):
   def __init__(self, specImg, origImg):
     self.specImg = specImg
@@ -117,7 +158,7 @@ class ColorStep(object):
 
   def applyTheme(self, theme):
     themeDict = self.getTheme(theme)
-    spec = self.specImg.getOriginalSpec()
+    spec = self.specImg.getSpec()
     spec['config'] = themeDict
     self.specImg.setSpec(spec)
     self.specImg.renderFile()
@@ -182,13 +223,13 @@ class TextStep(object):
     self.removeText(self.origImg, self.origImg.getTextData())
     self.origImg.setTextData(origTextData + self.origImg.getTextData())
 
-    log.debug("Found {0} words in orig image".format(len(self.origImg.getTextData())))
+    log.debug("Found {0} textual elements in original image".format(len(self.origImg.getTextData())))
 
   def processSpecification(self):
     self.findSpecText()
     self.removeText(self.specImg, self.specImg.getTextData())
 
-    log.debug("Found {0} words in spec pdf".format(len(self.specImg.getTextData())))
+    log.debug("Found {0} textual elements in spec pdf".format(len(self.specImg.getTextData())))
 
   def match(self):
     ow = self.origImg.getImage().width
@@ -249,7 +290,7 @@ class TextStep(object):
           if origBox['value'] in specBox['value']:
             matchedWords += 1
           else:
-            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origBox['value'], specBox['value']))
+            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origBox['value'].replace("\n","\\n"), specBox['value'].replace("\n","\\n")))
             specDraw.rectangle(
               [
                 specBox['x0'],
@@ -389,11 +430,14 @@ def program(specPath, visPath):
   colorStep = ColorStep(specImg, origImg)
   colorStep.main()
 
-  textStep = TextStep(specImg, origImg)
-  textStep.main()
+  dimensionsStep = DimensionsStep(specImg, origImg)
+  dimensionsStep.main()
 
-  origImg.getImage().show()
-  specImg.getImage().show()
+  # textStep = TextStep(specImg, origImg)
+  # textStep.main()
+
+  # origImg.getImage().show()
+  # specImg.getImage().show()
 
 
 
