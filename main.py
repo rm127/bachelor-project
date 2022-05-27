@@ -1,4 +1,4 @@
-import sys, re, subprocess, json, logging
+import sys, re, subprocess, json, logging, uuid
 from termcolor import colored
 import argparse
 
@@ -78,7 +78,7 @@ class SpecificationImage(Image):
       "vl2" + fileFormat, # cli tool for rendering vega-lite specs
       self.modifiedSpecPath, # path to the specification
       self.filePath + fileFormat, # temporary output path
-      "-s 4" # scale
+      "-s 1" # scale
     ])
     self.image = PImage.open(self.filePath + "png")
 
@@ -169,22 +169,24 @@ class TextStep(object):
 
     self.processOriginal()
     self.processSpecification()
+    self.removeText(self.origImg, self.specImg.getTextData())
+    self.removeText(self.specImg, self.origImg.getTextData())
     self.match()
 
   def processOriginal(self):
     self.findOrigText()
-    self.removeText(self.origImg)
+    self.removeText(self.origImg, self.origImg.getTextData())
     origTextData = self.origImg.getTextData()
     self.origImg.setTextData([])
     self.findOrigText(270)
-    self.removeText(self.origImg)
+    self.removeText(self.origImg, self.origImg.getTextData())
     self.origImg.setTextData(origTextData + self.origImg.getTextData())
 
     log.debug("Found {0} words in orig image".format(len(self.origImg.getTextData())))
 
   def processSpecification(self):
     self.findSpecText()
-    self.removeText(self.specImg)
+    self.removeText(self.specImg, self.specImg.getTextData())
 
     log.debug("Found {0} words in spec pdf".format(len(self.specImg.getTextData())))
 
@@ -205,13 +207,16 @@ class TextStep(object):
     origOverlay = PImage.new("RGBA", origBase.size, (0, 0, 0, 100))
     origDraw = ImageDraw.Draw(origOverlay, "RGBA")
 
-    colors = list(ImageColor.colormap)
+    # colors = list(ImageColor.colormap)
 
     for index, origBox in enumerate(self.origImg.getTextData()):
       OxCenter = (origBox['x0'] + origBox['width']/2)/ow
       OyCenter = (origBox['y0'] + origBox['height']/2)/oh
 
-      rgbcolor = ImageColor.getrgb(colors[index])
+      # rgbcolor = ImageColor.getrgb(colors[index])
+
+      # fillColor = rgbcolor + (100,)
+      fillColor = fill=(0,0,0,100)
 
       origDraw.rectangle(
         [
@@ -220,7 +225,7 @@ class TextStep(object):
           origBox['x0'] + origBox['width'],
           origBox['y0'] + origBox['height'],
         ],
-        fill=rgbcolor + (100,)
+        fill=fillColor
       )
 
       for specBox in self.specImg.getTextData():
@@ -238,7 +243,7 @@ class TextStep(object):
               specBox['x0'] + specBox['width'],
               specBox['y0'] + specBox['height'],
             ],
-            fill=rgbcolor + (100,)
+            fill=fillColor
           )
 
           if origBox['value'] in specBox['value']:
@@ -345,15 +350,18 @@ class TextStep(object):
 
 
   # covers text on the given image with black boxes
-  def removeText(self, image, rotation=0):
+  def removeText(self, image, textData, rotation=0):
     # prepare to draw on the image
     workingCopy = image.getImage().copy()
     drawing = ImageDraw.Draw(workingCopy)
 
     # temporary for different colors
-    colors = list(ImageColor.colormap)
+    # colors = list(ImageColor.colormap)
 
-    for index, box in enumerate(image.getTextData()):
+    # fillColor = colors[index]
+    fillColor = (0,0,0)
+
+    for index, box in enumerate(textData):
       # draw a box over the identified text
       drawing.rectangle(
         [
@@ -362,7 +370,7 @@ class TextStep(object):
           box['x0'] + box['width'],
           box['y0'] + box['height'],
         ],
-        fill=colors[index]
+        fill=fillColor
       )
 
     # workingCopy.show()
