@@ -99,7 +99,7 @@ class DimensionsStep(object):
     self.origImg = origImg
 
   def main(self):
-    log.info("Running DimensionsStep...")
+    log.info("* Running DimensionsStep...")
     origWidth, origHeight = self.getImgDimensions(self.origImg)
     log.debug("Size of original image {0}x{1}".format(origWidth, origHeight))
 
@@ -111,14 +111,14 @@ class DimensionsStep(object):
     widthDiff = specWidth - origWidth
     heightDiff = specHeight - origHeight
 
-    log.info("Image differs by {0} in width and {1} in height".format(widthDiff, heightDiff))
+    log.debug("Image differs by {0} in width and {1} in height".format(widthDiff, heightDiff))
 
     newWidth = origWidth - widthDiff
     newHeight = origHeight - heightDiff
 
-    log.info("Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
+    log.info("= Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
 
-    # self.renderSpecImageWithDimensions(newWidth, newHeight)
+    self.renderSpecImageWithDimensions(newWidth, newHeight)
 
   def getImgDimensions(self, img):
     size = img.getImage().size
@@ -171,7 +171,7 @@ class ColorStep(object):
     return histogram
 
   def main(self):
-    log.info("Running ColorStep...")
+    log.info("* Running ColorStep...")
 
     originalImage = self.origImg.getImage()
     origHistogram = self.getHistogram(originalImage)
@@ -194,7 +194,7 @@ class ColorStep(object):
         bestScore = score
         bestTheme = theme
 
-    log.info("Applying theme '{0}' with the highest score of {1}%".format(bestTheme, bestScore*100, 2))
+    log.info("= Applying theme '{0}' with the highest score of {1}%".format(bestTheme, bestScore*100, 2))
     self.applyTheme(bestTheme)
 
 
@@ -206,7 +206,7 @@ class TextStep(object):
     self.origImg = origImg
 
   def main(self):
-    log.info("Running TextStep...")
+    log.info("* Running TextStep...")
 
     self.processOriginal()
     self.processSpecification()
@@ -318,7 +318,7 @@ class TextStep(object):
     # specPrev.show()
     # origPrev.show()
 
-    log.info("Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords, 2))
+    log.info("= Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords, 2))
 
 
 
