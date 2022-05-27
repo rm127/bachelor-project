@@ -1,4 +1,4 @@
-import sys, re, subprocess, json
+import sys, re, subprocess, json, logging
 from termcolor import colored
 import argparse
 
@@ -11,6 +11,12 @@ from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTTextBoxHorizontal
 
 
+logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.INFO)
+
+log = logging.getLogger(__name__)
+
+# log to file - default log is to terminal
+# log.addHandler(logging.FileHandler("himmerland.log"))
 
 
 class Image(object):
@@ -124,6 +130,7 @@ class ColorStep(object):
     return histogram
 
   def main(self):
+    log.info("Running ColorStep...")
 
     originalImage = self.origImg.getImage()
     origHistogram = self.getHistogram(originalImage)
@@ -140,12 +147,13 @@ class ColorStep(object):
       # for compare_method in range(4):
       #   score = cv.compareHist(origHistogram, specHistogram, compare_method)
 
-      print("Comparing {0} with a score of {1}".format(theme, score))
+      log.debug("Comparing theme '{0}' with a score of {1}".format(theme, score))
 
       if score > bestScore:
         bestScore = score
         bestTheme = theme
 
+    log.info("Applying theme '{0}' with the highest score of {1}%".format(bestTheme, bestScore*100, 2))
     self.applyTheme(bestTheme)
 
 
@@ -157,6 +165,8 @@ class TextStep(object):
     self.origImg = origImg
 
   def main(self):
+    log.info("Running TextStep...")
+
     self.processOriginal()
     self.processSpecification()
     self.match()
@@ -170,9 +180,13 @@ class TextStep(object):
     self.removeText(self.origImg)
     self.origImg.setTextData(origTextData + self.origImg.getTextData())
 
+    log.debug("Found {0} words in orig image".format(len(self.origImg.getTextData())))
+
   def processSpecification(self):
     self.findSpecText()
     self.removeText(self.specImg)
+
+    log.debug("Found {0} words in spec pdf".format(len(self.specImg.getTextData())))
 
   def match(self):
     ow = self.origImg.getImage().width
@@ -230,7 +244,7 @@ class TextStep(object):
           if origBox['value'] in specBox['value']:
             matchedWords += 1
           else:
-            # print(origBox['value'] + " != " + specBox['value'])
+            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origBox['value'], specBox['value']))
             specDraw.rectangle(
               [
                 specBox['x0'],
@@ -258,7 +272,7 @@ class TextStep(object):
     # specPrev.show()
     # origPrev.show()
 
-    print("{0}% match".format(matchedWords*100/totalWords))
+    log.info("Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords, 2))
 
 
 
@@ -377,11 +391,17 @@ def program(specPath, visPath):
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Validate a data visualization against a Vega-Lite specification.')
-  parser.add_argument('-s', '--spec', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
-  parser.add_argument('-v', '--vis', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
+  parser.add_argument('-v', '--verbose', action='store_true', help='Show verbose output')
+  parser.add_argument('-s', '--spec', metavar='file', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
+  parser.add_argument('-i', '--vis', metavar='file', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
 
   args = parser.parse_args()
+
   specPath = args.spec[0].name
   visPath = args.vis[0].name
+  verbose = args.verbose
+
+  if verbose:
+    log.setLevel(logging.DEBUG)
 
   program(specPath, visPath)
