@@ -431,42 +431,62 @@ class FinalStep(object):
   def main(self):
     log.info("* Running FinalStep...")
 
+    specImg = np.array(self.specImg.getImage().copy())
+    origImg = np.array(self.origImg.getImage().copy())
+
+    # diff = 255 - cv.absdiff(specImg, origImg)
+    # PImage.fromarray(diff).show()
+
     # https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
 
-    specImg = self.specImg.getImage().copy()
-    origImg = self.origImg.getImage().copy()
-
-    spec_gray = cv2.cvtColor(specImg, cv2.COLOR_BGR2GRAY)
-    orig_gray = cv2.cvtColor(origImg, cv2.COLOR_BGR2GRAY)
+    spec_gray = cv.cvtColor(specImg, cv.COLOR_BGR2GRAY)
+    orig_gray = cv.cvtColor(origImg, cv.COLOR_BGR2GRAY)
 
     (score, diff) = structural_similarity(spec_gray, orig_gray, full=True)
-    log.info("Image similarity: {0}%".format(score * 100))
+    log.info("= Similarity: {0}%".format(score * 100))
 
     diff = (diff * 255).astype("uint8")
-    diff_box = cv2.merge([diff, diff, diff])
 
-    thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-    contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    thresh = cv.threshold(diff, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)[1]
+    contours = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     contours = contours[0] if len(contours) == 2 else contours[1]
 
-    mask = np.zeros(specImg.shape, dtype='uint8')
-    filled_after = origImg.copy()
+    specHighlight = self.specImg.getImage().copy()
+    specDraw = ImageDraw.Draw(specHighlight)
+    origHighlight = self.origImg.getImage().copy()
+    origDraw = ImageDraw.Draw(origHighlight)
+
+    borderColor = (0,255,0)
 
     for c in contours:
-      area = cv2.contourArea(c)
+      area = cv.contourArea(c)
       if area > 40:
-        x,y,w,h = cv2.boundingRect(c)
-        cv2.rectangle(specImg, (x, y), (x + w, y + h), (36,255,12), 2)
-        cv2.rectangle(origImg, (x, y), (x + w, y + h), (36,255,12), 2)
-        cv2.rectangle(diff_box, (x, y), (x + w, y + h), (36,255,12), 2)
-        cv2.drawContours(mask, [c], 0, (255,255,255), -1)
-        cv2.drawContours(filled_after, [c], 0, (0,255,0), -1)
+        x,y,w,h = cv.boundingRect(c)
 
-    specImg.show()
-    origImg.show()
-    diff_box.show()
-    mask.show()
-    filled_after.show()
+        specDraw.rectangle(
+          [
+            x,
+            y,
+            x+w,
+            y+h
+          ],
+          outline=borderColor,
+          width=2
+        )
+
+        origDraw.rectangle(
+          [
+            x,
+            y,
+            x+w,
+            y+h
+          ],
+          outline=borderColor,
+          width=2
+        )
+
+    specHighlight.show()
+    origHighlight.show()
 
 
 def program(specPath, visPath):
