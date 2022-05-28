@@ -2,6 +2,7 @@ import sys, re, subprocess, json, logging, uuid
 from termcolor import colored
 import argparse
 
+from skimage.metrics import structural_similarity
 from PIL import Image as PImage, ImageDraw, ImageColor
 import pytesseract
 import cv2 as cv
@@ -430,6 +431,42 @@ class FinalStep(object):
   def main(self):
     log.info("* Running FinalStep...")
 
+    # https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
+
+    specImg = self.specImg.getImage().copy()
+    origImg = self.origImg.getImage().copy()
+
+    spec_gray = cv2.cvtColor(specImg, cv2.COLOR_BGR2GRAY)
+    orig_gray = cv2.cvtColor(origImg, cv2.COLOR_BGR2GRAY)
+
+    (score, diff) = structural_similarity(spec_gray, orig_gray, full=True)
+    log.info("Image similarity: {0}%".format(score * 100))
+
+    diff = (diff * 255).astype("uint8")
+    diff_box = cv2.merge([diff, diff, diff])
+
+    thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
+    contours = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = contours[0] if len(contours) == 2 else contours[1]
+
+    mask = np.zeros(specImg.shape, dtype='uint8')
+    filled_after = origImg.copy()
+
+    for c in contours:
+      area = cv2.contourArea(c)
+      if area > 40:
+        x,y,w,h = cv2.boundingRect(c)
+        cv2.rectangle(specImg, (x, y), (x + w, y + h), (36,255,12), 2)
+        cv2.rectangle(origImg, (x, y), (x + w, y + h), (36,255,12), 2)
+        cv2.rectangle(diff_box, (x, y), (x + w, y + h), (36,255,12), 2)
+        cv2.drawContours(mask, [c], 0, (255,255,255), -1)
+        cv2.drawContours(filled_after, [c], 0, (0,255,0), -1)
+
+    specImg.show()
+    origImg.show()
+    diff_box.show()
+    mask.show()
+    filled_after.show()
 
 
 def program(specPath, visPath):

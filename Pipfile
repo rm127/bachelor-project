@@ -11,6 +11,7 @@ numpy = "*"
 "pdfminer.six" = "*"
 opencv-python-headless = "*"
 argparse = "*"
+scikit-image = "*"
 
 [dev-packages]
 
