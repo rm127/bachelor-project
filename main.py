@@ -35,9 +35,6 @@ class Image(object):
   def setImage(self, image):
     self.image = image
 
-  def getOriginalImage(self):
-    return self.originalImage
-
 
 class SpecificationImage(Image):
   def __init__(self, specPath):
@@ -55,8 +52,7 @@ class SpecificationImage(Image):
       spec.close()
 
     self.renderFile()
-    self.originalImage = PImage.open(self.filePath + "png")
-    self.image = self.originalImage.copy()
+    self.image = PImage.open(self.filePath + "png")
 
 
   def getImagePath(self, fileFormat):
@@ -87,8 +83,7 @@ class OriginalImage(Image):
   def __init__(self, imagePath):
     super().__init__()
     self.imagePath = imagePath
-    self.originalImage = PImage.open(self.imagePath)
-    self.image = self.originalImage.copy()
+    self.image = PImage.open(self.imagePath)
 
 
 
@@ -205,6 +200,9 @@ class TextStep(object):
     self.specImg = specImg
     self.origImg = origImg
 
+    self.specInitialImg = specImg.getImage().copy()
+    self.origInitialImg = origImg.getImage().copy()
+
   def main(self):
     log.info("* Running TextStep...")
 
@@ -212,7 +210,7 @@ class TextStep(object):
     self.processSpecification()
     self.removeText(self.origImg, self.specImg.getTextData())
     self.removeText(self.specImg, self.origImg.getTextData())
-    self.match()
+    self.compare()
 
   def processOriginal(self):
     self.findOrigText()
@@ -231,7 +229,7 @@ class TextStep(object):
 
     log.debug("Found {0} textual elements in spec pdf".format(len(self.specImg.getTextData())))
 
-  def match(self):
+  def compare(self, showPreview=False):
     ow = self.origImg.getImage().width
     oh = self.origImg.getImage().height
     sw = self.specImg.getImage().width
@@ -240,57 +238,47 @@ class TextStep(object):
     totalWords = len(self.origImg.getTextData())
     matchedWords = 0
 
-    specBase = self.specImg.getOriginalImage().copy()
+    specBase = self.specInitialImg
     specOverlay = PImage.new("RGBA", specBase.size, (0, 0, 0, 100))
     specDraw = ImageDraw.Draw(specOverlay, "RGBA")
 
-    origBase = self.origImg.getOriginalImage().copy()
+    origBase = self.origInitialImg
     origOverlay = PImage.new("RGBA", origBase.size, (0, 0, 0, 100))
     origDraw = ImageDraw.Draw(origOverlay, "RGBA")
 
-    # colors = list(ImageColor.colormap)
+    colors = list(ImageColor.colormap)
 
     for index, origBox in enumerate(self.origImg.getTextData()):
+      origText = origBox['value'].lower()
+
       OxCenter = (origBox['x0'] + origBox['width']/2)/ow
       OyCenter = (origBox['y0'] + origBox['height']/2)/oh
 
-      # rgbcolor = ImageColor.getrgb(colors[index])
+      rgbcolor = ImageColor.getrgb(colors[index])
 
-      # fillColor = rgbcolor + (100,)
-      fillColor = fill=(0,0,0,100)
+      fillColor = rgbcolor + (100,)
 
-      origDraw.rectangle(
-        [
-          origBox['x0'],
-          origBox['y0'],
-          origBox['x0'] + origBox['width'],
-          origBox['y0'] + origBox['height'],
-        ],
-        fill=fillColor
-      )
+      if showPreview:
+        origDraw.rectangle(
+          [
+            origBox['x0'],
+            origBox['y0'],
+            origBox['x0'] + origBox['width'],
+            origBox['y0'] + origBox['height'],
+          ],
+          fill=fillColor
+        )
 
       for specBox in self.specImg.getTextData():
+        specText = specBox['value'].lower()
+
         x0 = specBox['x0']/sw
         y0 = specBox['y0']/sh
         x1 = (specBox['x0'] + specBox['width'])/sw
         y1 = (specBox['y0'] + specBox['height'])/sh
-        # print(OxCenter, x0, x1)
         if OxCenter >= x0 and OxCenter <= x1 and OyCenter >= y0 and OyCenter <= y1:
 
-          specDraw.rectangle(
-            [
-              specBox['x0'],
-              specBox['y0'],
-              specBox['x0'] + specBox['width'],
-              specBox['y0'] + specBox['height'],
-            ],
-            fill=fillColor
-          )
-
-          if origBox['value'] in specBox['value']:
-            matchedWords += 1
-          else:
-            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origBox['value'].replace("\n","\\n"), specBox['value'].replace("\n","\\n")))
+          if showPreview:
             specDraw.rectangle(
               [
                 specBox['x0'],
@@ -298,27 +286,42 @@ class TextStep(object):
                 specBox['x0'] + specBox['width'],
                 specBox['y0'] + specBox['height'],
               ],
-              outline="red",
-              width=2
-            )
-            origDraw.rectangle(
-              [
-                origBox['x0'],
-                origBox['y0'],
-                origBox['x0'] + origBox['width'],
-                origBox['y0'] + origBox['height'],
-              ],
-              outline="red",
-              width=2
+              fill=fillColor
             )
 
+          if origText in specText:
+            matchedWords += 1
+          else:
+            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origText.replace("\n","\\n"), specText.replace("\n","\\n")))
+            if showPreview:
+              specDraw.rectangle(
+                [
+                  specBox['x0'],
+                  specBox['y0'],
+                  specBox['x0'] + specBox['width'],
+                  specBox['y0'] + specBox['height'],
+                ],
+                outline="red",
+                width=2
+              )
+              origDraw.rectangle(
+                [
+                  origBox['x0'],
+                  origBox['y0'],
+                  origBox['x0'] + origBox['width'],
+                  origBox['y0'] + origBox['height'],
+                ],
+                outline="red",
+                width=2
+              )
 
-    specPrev = PImage.alpha_composite(specBase, specOverlay)
-    origPrev = PImage.alpha_composite(origBase, origOverlay)
-    # specPrev.show()
-    # origPrev.show()
+    if showPreview:
+      specPrev = PImage.alpha_composite(specBase, specOverlay)
+      origPrev = PImage.alpha_composite(origBase, origOverlay)
+      specPrev.show()
+      origPrev.show()
 
-    log.info("= Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords, 2))
+    log.info("= Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords))
 
 
 
@@ -419,6 +422,13 @@ class TextStep(object):
     image.setImage(workingCopy)
 
 
+class FinalStep(object):
+  def __init__(self, specImg, origImg):
+    self.specImg = specImg
+    self.origImg = origImg
+
+  def main(self):
+    log.info("* Running FinalStep...")
 
 
 
@@ -433,8 +443,11 @@ def program(specPath, visPath):
   dimensionsStep = DimensionsStep(specImg, origImg)
   dimensionsStep.main()
 
-  # textStep = TextStep(specImg, origImg)
-  # textStep.main()
+  textStep = TextStep(specImg, origImg)
+  textStep.main()
+
+  finalStep = FinalStep(specImg, origImg)
+  finalStep.main()
 
   # origImg.getImage().show()
   # specImg.getImage().show()
