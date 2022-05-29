@@ -38,11 +38,12 @@ class Image(object):
 
 
 class SpecificationImage(Image):
-  def __init__(self, specPath):
+  def __init__(self, specPath, scale):
     super().__init__()
     self.specPath = specPath
     self.modifiedSpecPath = "tmp/modifiedSpec.json"
     self.filePath = "tmp/specImage."
+    self.scale = scale
 
     with open(self.specPath) as spec:
       self.spec = json.load(spec)
@@ -75,7 +76,7 @@ class SpecificationImage(Image):
       "vl2" + fileFormat, # cli tool for rendering vega-lite specs
       self.modifiedSpecPath, # path to the specification
       self.filePath + fileFormat, # temporary output path
-      "-s 1" # scale
+      "-s {0}".format(self.scale) # scale
     ])
     self.image = PImage.open(self.filePath + "png")
 
@@ -90,9 +91,10 @@ class OriginalImage(Image):
 
 
 class DimensionsStep(object):
-  def __init__(self, specImg, origImg):
+  def __init__(self, specImg, origImg, scale):
     self.specImg = specImg
     self.origImg = origImg
+    self.scale = scale
 
   def main(self):
     log.info("* Running DimensionsStep...")
@@ -118,7 +120,7 @@ class DimensionsStep(object):
 
   def getImgDimensions(self, img):
     size = img.getImage().size
-    return size[0], size[1]
+    return int(size[0] / scale), int(size[1] / scale)
 
   def renderSpecImageWithDimensions(self, width, height):
     spec = self.specImg.getSpec()
@@ -211,7 +213,7 @@ class TextStep(object):
     self.processSpecification()
     self.removeText(self.origImg, self.specImg.getTextData())
     self.removeText(self.specImg, self.origImg.getTextData())
-    self.compare()
+    self.compare(True)
 
   def processOriginal(self):
     self.findOrigText()
@@ -431,73 +433,46 @@ class FinalStep(object):
   def main(self):
     log.info("* Running FinalStep...")
 
-    specImg = np.array(self.specImg.getImage().copy())
-    origImg = np.array(self.origImg.getImage().copy())
+    specImg = self.specImg.getImage().copy().convert('RGBA')
+    origImg = self.origImg.getImage().copy().convert('RGBA')
 
-    # diff = 255 - cv.absdiff(specImg, origImg)
-    # PImage.fromarray(diff).show()
+    overlay = PImage.new('RGBA',specImg.size,(255,255,255,150))
 
-    # https://stackoverflow.com/questions/56183201/detect-and-visualize-differences-between-two-images-with-opencv-python
+    specImg.alpha_composite(overlay)
+    origImg.alpha_composite(overlay)
 
-    spec_gray = cv.cvtColor(specImg, cv.COLOR_BGR2GRAY)
-    orig_gray = cv.cvtColor(origImg, cv.COLOR_BGR2GRAY)
+    specImg = specImg.convert('RGB')
+    origImg = origImg.convert('RGB')
 
-    (score, diff) = structural_similarity(spec_gray, orig_gray, full=True)
-    log.info("= Similarity: {0}%".format(score * 100))
+    specImg = np.array(specImg)
+    origImg = np.array(origImg)
 
-    diff = (diff * 255).astype("uint8")
+    difference = cv.subtract(specImg, origImg)
 
-    thresh = cv.threshold(diff, 0, 255, cv.THRESH_BINARY_INV | cv.THRESH_OTSU)[1]
-    contours = cv.findContours(thresh, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
-    contours = contours[0] if len(contours) == 2 else contours[1]
+    # color the mask red
+    Conv_hsv_Gray = cv.cvtColor(difference, cv.COLOR_BGR2GRAY)
+    ret, mask = cv.threshold(Conv_hsv_Gray, 0, 255,cv.THRESH_BINARY_INV |cv.THRESH_OTSU)
 
-    specHighlight = self.specImg.getImage().copy()
-    specDraw = ImageDraw.Draw(specHighlight)
-    origHighlight = self.origImg.getImage().copy()
-    origDraw = ImageDraw.Draw(origHighlight)
+    fillColor = [255, 0, 0]
 
-    borderColor = (0,255,0)
+    difference[mask != 255] = fillColor
+    specImg[mask != 255] = fillColor
+    origImg[mask != 255] = fillColor
 
-    for c in contours:
-      area = cv.contourArea(c)
-      if area > 40:
-        x,y,w,h = cv.boundingRect(c)
-
-        specDraw.rectangle(
-          [
-            x,
-            y,
-            x+w,
-            y+h
-          ],
-          outline=borderColor,
-          width=2
-        )
-
-        origDraw.rectangle(
-          [
-            x,
-            y,
-            x+w,
-            y+h
-          ],
-          outline=borderColor,
-          width=2
-        )
-
-    specHighlight.show()
-    origHighlight.show()
+    PImage.fromarray(difference).show()
+    PImage.fromarray(specImg).show()
+    PImage.fromarray(origImg).show()
 
 
-def program(specPath, visPath):
+def program(specPath, visPath, scale):
   # init both images
-  specImg = SpecificationImage(specPath)
+  specImg = SpecificationImage(specPath, scale)
   origImg = OriginalImage(visPath)
 
   colorStep = ColorStep(specImg, origImg)
   colorStep.main()
 
-  dimensionsStep = DimensionsStep(specImg, origImg)
+  dimensionsStep = DimensionsStep(specImg, origImg, scale)
   dimensionsStep.main()
 
   textStep = TextStep(specImg, origImg)
@@ -514,16 +489,18 @@ def program(specPath, visPath):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Validate a data visualization against a Vega-Lite specification.')
   parser.add_argument('-v', '--verbose', action='store_true', help='Show verbose output')
-  parser.add_argument('-s', '--spec', metavar='file', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
+  parser.add_argument('-s', '--scale', metavar='number', nargs=1, type=int, help='Scale of original image', required=False, default=1)
+  parser.add_argument('-c', '--spec', metavar='file', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
   parser.add_argument('-i', '--vis', metavar='file', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
 
   args = parser.parse_args()
 
   specPath = args.spec[0].name
   visPath = args.vis[0].name
+  scale = args.scale[0]
   verbose = args.verbose
 
   if verbose:
     log.setLevel(logging.DEBUG)
 
-  program(specPath, visPath)
+  program(specPath, visPath, scale)
