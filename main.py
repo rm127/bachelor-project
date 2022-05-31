@@ -114,10 +114,19 @@ class DimensionsStep(object):
     newWidth = origWidth - widthDiff/self.scale
     newHeight = origHeight - heightDiff/self.scale
 
-    log.info("= Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
-
-    self.restoreAxisTextPosition()
     self.renderSpecImageWithDimensions(newWidth, newHeight)
+
+    specWidth, specHeight = self.getImgDimensions(self.specImg)
+
+    widthDiff = (specWidth - origWidth)/self.scale
+    heightDiff = (specHeight - origHeight)/self.scale
+
+    newWidth = newWidth - widthDiff
+    newHeight = newHeight - heightDiff
+
+    self.renderSpecImageWithDimensions(newWidth, newHeight)
+
+    log.info("= Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
 
   def getImgDimensions(self, img):
     size = img.getImage().size
@@ -128,23 +137,8 @@ class DimensionsStep(object):
     spec = self.specImg.getSpec()
     spec['width'] = width
     spec['height'] = height
-
-    if 'axisY' in spec['config']:
-      spec['config']['axisY']['labelBaseline'] = 'top'
-      spec['config']['axisY']['position'] = 2
-    else:
-      spec['config']['axisY'] = {
-        'labelBaseline': 'top',
-        'position': 2
-      }
     self.specImg.setSpec(spec)
     self.specImg.renderFile()
-
-  def restoreAxisTextPosition(self):
-    spec = self.specImg.getSpec()
-    del spec['config']['axisY']['labelBaseline']
-    del spec['config']['axisY']['position']
-    self.specImg.setSpec(spec)
 
 
 
@@ -230,7 +224,7 @@ class TextStep(object):
     self.processSpecification()
     self.removeText(self.origImg, self.specImg.getTextData())
     self.removeText(self.specImg, self.origImg.getTextData())
-    self.compare(True)
+    self.compare(False)
 
   def processOriginal(self):
     self.findOrigText()
@@ -491,8 +485,6 @@ def program(specPath, visPath, scale):
 
   dimensionsStep = DimensionsStep(specImg, origImg, scale)
   dimensionsStep.main()
-
-  exit()
 
   textStep = TextStep(specImg, origImg)
   textStep.main()
