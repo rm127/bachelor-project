@@ -4,6 +4,8 @@
   "data": {
     "url": "data/penguins.json"
   },
+  "width": 362,
+  "height": 253,
   "mark": "point",
   "encoding": {
     "x": {
