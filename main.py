@@ -1,9 +1,10 @@
 import sys, re, subprocess, json, logging, uuid
 from termcolor import colored
 import argparse
+from tabulate import tabulate
 
 from skimage.metrics import structural_similarity
-from PIL import Image as PImage, ImageDraw, ImageColor
+from PIL import Image as PImage, ImageDraw, ImageColor, ImageShow
 import pytesseract
 import cv2 as cv
 import numpy as np
@@ -18,6 +19,27 @@ log = logging.getLogger(__name__)
 
 # log to file - default log is to terminal
 # log.addHandler(logging.FileHandler("himmerland.log"))
+
+# handle saving of temporary images to allow for custom titles in windows
+class MyViewer(ImageShow.MacViewer):
+  format = "PNG"
+
+  def show(self, image, title, **options):
+    return self.show_image(image, title, **options)
+
+  def save_image(self, image, title):
+    path = "tmp/{0}.png".format(title)
+    """Save to temporary file and return filename."""
+    image.save(path)
+    return path
+
+  def show_image(self, image, title, **options):
+    """Display the given image."""
+    return self.show_file(self.save_image(image, title), **options)
+
+
+
+ImageShow.register(MyViewer(), 0)
 
 
 class Image(object):
@@ -128,6 +150,8 @@ class DimensionsStep(object):
 
     log.info("= Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
 
+    return ["Dimensions","{0}x{1}".format(newWidth, newHeight)]
+
   def getImgDimensions(self, img):
     size = img.getImage().size
     return size[0], size[1]
@@ -185,6 +209,8 @@ class ColorStep(object):
     originalImage = self.origImg.getImage()
     origHistogram = self.getHistogram(originalImage)
 
+    scores = []
+
     bestScore = 0
     bestTheme = None
     for i, theme in enumerate(self.themes):
@@ -197,22 +223,28 @@ class ColorStep(object):
       # for compare_method in range(4):
       #   score = cv.compareHist(origHistogram, specHistogram, compare_method)
 
-      log.debug("Comparing theme '{0}' with a score of {1}".format(theme, score))
+      scores.append([theme, "{:3.3f}%".format(score*100)])
 
       if score > bestScore:
         bestScore = score
         bestTheme = theme
 
-    log.info("= Applying theme '{0}' with the highest score of {1}%".format(bestTheme, bestScore*100, 2))
+    score = "{:3.3f}%".format(bestScore*100)
+
+    log.debug("Color theme scores:\n"+tabulate(scores, headers=["Theme","Match score"], tablefmt="pretty"))
+
+    log.info("= Applying theme '{0}' with the highest score of {1}".format(bestTheme, score))
     self.applyTheme(bestTheme)
+    return ["Color", bestTheme, score]
 
 
 
 
 class TextStep(object):
-  def __init__(self, specImg, origImg):
+  def __init__(self, specImg, origImg, silenced):
     self.specImg = specImg
     self.origImg = origImg
+    self.silenced = silenced
 
     self.specInitialImg = specImg.getImage().copy()
     self.origInitialImg = origImg.getImage().copy()
@@ -224,7 +256,10 @@ class TextStep(object):
     self.processSpecification()
     self.removeText(self.origImg, self.specImg.getTextData())
     self.removeText(self.specImg, self.origImg.getTextData())
-    self.compare(False)
+    score = self.compare(showPreview=True)
+
+    return ["Text", None, score]
+
 
   def processOriginal(self):
     self.findOrigText()
@@ -243,6 +278,22 @@ class TextStep(object):
 
     log.debug("Found {0} textual elements in spec pdf".format(len(self.specImg.getTextData())))
 
+  def normalizeText(self, string):
+    output = string.lower().strip()
+    self.replaceLookup = [
+      ["‒", "-"],
+      ["–", "-"],
+      ["—", "-"],
+      ["―", "-"],
+      ["−", "-"],
+      ["\n",""]
+    ]
+    for item in self.replaceLookup:
+      output = output.replace(item[0], item[1])
+
+    return output
+
+
   def compare(self, showPreview=False):
     ow = self.origImg.getImage().width
     oh = self.origImg.getImage().height
@@ -252,18 +303,20 @@ class TextStep(object):
     totalWords = len(self.origImg.getTextData())
     matchedWords = 0
 
-    specBase = self.specInitialImg
+    specBase = self.specInitialImg.convert("RGBA")
     specOverlay = PImage.new("RGBA", specBase.size, (0, 0, 0, 100))
     specDraw = ImageDraw.Draw(specOverlay, "RGBA")
 
-    origBase = self.origInitialImg
+    origBase = self.origInitialImg.convert("RGBA")
     origOverlay = PImage.new("RGBA", origBase.size, (0, 0, 0, 100))
     origDraw = ImageDraw.Draw(origOverlay, "RGBA")
 
     colors = list(ImageColor.colormap)
 
+    mismatches = []
+
     for index, origBox in enumerate(self.origImg.getTextData()):
-      origText = origBox['value'].lower().strip()
+      origText = self.normalizeText(origBox['value'])
 
       OxCenter = (origBox['x0'] + origBox['width']/2)/ow
       OyCenter = (origBox['y0'] + origBox['height']/2)/oh
@@ -284,7 +337,7 @@ class TextStep(object):
         )
 
       for specBox in self.specImg.getTextData():
-        specText = specBox['value'].lower()
+        specText = self.normalizeText(specBox['value'])
 
         x0 = specBox['x0']/sw
         y0 = specBox['y0']/sh
@@ -306,7 +359,8 @@ class TextStep(object):
           if origText in specText:
             matchedWords += 1
           else:
-            log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origText.replace("\n","\\n"), specText.replace("\n","\\n")))
+            mismatches.append([origText, specText])
+            # log.debug("Words '{0}' and '{1}' were at the same location but did not match".format(origText.replace("\n","\\n"), specText.replace("\n","\\n")))
             if showPreview:
               specDraw.rectangle(
                 [
@@ -329,13 +383,19 @@ class TextStep(object):
                 width=2
               )
 
+    log.debug("Text mismatches:\n"+tabulate(mismatches, headers=["Original","Specification"], tablefmt="pretty"))
+
     if showPreview:
       specPrev = PImage.alpha_composite(specBase, specOverlay)
       origPrev = PImage.alpha_composite(origBase, origOverlay)
-      specPrev.show()
-      origPrev.show()
+      if not self.silenced:
+        specPrev.show(title="Specification text elements")
+        origPrev.show(title="Original text elements")
 
-    log.info("= Matched textual elements with a score of {0}%".format(matchedWords*100/totalWords))
+    score = "{:3.3f}%".format(matchedWords*100/totalWords)
+
+    log.info("= Matched textual elements with a score of {0}".format(score))
+    return score
 
 
 
@@ -437,9 +497,10 @@ class TextStep(object):
 
 
 class FinalStep(object):
-  def __init__(self, specImg, origImg):
+  def __init__(self, specImg, origImg, silenced):
     self.specImg = specImg
     self.origImg = origImg
+    self.silenced = silenced
 
   def main(self):
     log.info("* Running FinalStep...")
@@ -462,44 +523,48 @@ class FinalStep(object):
 
     # color the mask red
     Conv_hsv_Gray = cv.cvtColor(difference, cv.COLOR_BGR2GRAY)
-    ret, mask = cv.threshold(Conv_hsv_Gray, 0, 255,cv.THRESH_BINARY_INV |cv.THRESH_OTSU)
+    ret, mask = cv.threshold(Conv_hsv_Gray, 0, 255,cv.THRESH_BINARY_INV | cv.THRESH_OTSU)
 
     fillColor = [255, 0, 0]
 
-    difference[mask != 255] = fillColor
+    difference[mask != 255] = [255, 255, 255]
     specImg[mask != 255] = fillColor
     origImg[mask != 255] = fillColor
 
-    PImage.fromarray(difference).show()
-    PImage.fromarray(specImg).show()
-    PImage.fromarray(origImg).show()
+    if not self.silenced:
+      PImage.fromarray(difference).show(title="Difference mask")
+      PImage.fromarray(specImg).show("Difference on specification image")
 
 
-def program(specPath, visPath, scale):
+def program(specPath, visPath, scale, silenced):
   # init both images
   specImg = SpecificationImage(specPath, scale)
   origImg = OriginalImage(visPath)
 
   colorStep = ColorStep(specImg, origImg)
-  colorStep.main()
+  colorRes = colorStep.main()
 
   dimensionsStep = DimensionsStep(specImg, origImg, scale)
-  dimensionsStep.main()
+  dimensionsRes = dimensionsStep.main()
 
-  textStep = TextStep(specImg, origImg)
-  textStep.main()
+  textStep = TextStep(specImg, origImg, silenced)
+  textRes = textStep.main()
 
-  finalStep = FinalStep(specImg, origImg)
+  finalStep = FinalStep(specImg, origImg, silenced)
   finalStep.main()
 
-  # origImg.getImage().show()
-  # specImg.getImage().show()
+  log.info("Summary:\n"+tabulate([
+    colorRes,
+    dimensionsRes,
+    textRes
+  ], headers=["Step","Calculated setting","Accuracy"], tablefmt="pretty"))
 
 
 
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Validate a data visualization against a Vega-Lite specification.')
   parser.add_argument('-v', '--verbose', action='store_true', help='Show verbose output')
+  parser.add_argument('-q', '--silenced', action='store_true', help='Silence image output')
   parser.add_argument('-s', '--scale', metavar='number', nargs=None, type=int, help='Scale of original image', default=1)
   parser.add_argument('-c', '--spec', metavar='file', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
   parser.add_argument('-i', '--vis', metavar='file', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
@@ -510,8 +575,9 @@ if __name__ == '__main__':
   visPath = args.vis[0].name
   scale = args.scale
   verbose = args.verbose
+  silenced = args.silenced
 
   if verbose:
     log.setLevel(logging.DEBUG)
 
-  program(specPath, visPath, scale)
+  program(specPath, visPath, scale, silenced)
