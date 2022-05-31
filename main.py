@@ -111,23 +111,40 @@ class DimensionsStep(object):
 
     log.debug("Image differs by {0} in width and {1} in height".format(widthDiff, heightDiff))
 
-    newWidth = origWidth - widthDiff
-    newHeight = origHeight - heightDiff
+    newWidth = origWidth - widthDiff/self.scale
+    newHeight = origHeight - heightDiff/self.scale
 
     log.info("= Specification dimensions calculated {0}x{1}".format(newWidth, newHeight))
 
+    self.restoreAxisTextPosition()
     self.renderSpecImageWithDimensions(newWidth, newHeight)
 
   def getImgDimensions(self, img):
     size = img.getImage().size
-    return int(size[0] / scale), int(size[1] / scale)
+    return size[0], size[1]
+    # return int(size[0] / scale), int(size[1] / scale)
 
   def renderSpecImageWithDimensions(self, width, height):
     spec = self.specImg.getSpec()
     spec['width'] = width
     spec['height'] = height
+
+    if 'axisY' in spec['config']:
+      spec['config']['axisY']['labelBaseline'] = 'top'
+      spec['config']['axisY']['position'] = 2
+    else:
+      spec['config']['axisY'] = {
+        'labelBaseline': 'top',
+        'position': 2
+      }
     self.specImg.setSpec(spec)
     self.specImg.renderFile()
+
+  def restoreAxisTextPosition(self):
+    spec = self.specImg.getSpec()
+    del spec['config']['axisY']['labelBaseline']
+    del spec['config']['axisY']['position']
+    self.specImg.setSpec(spec)
 
 
 
@@ -252,7 +269,7 @@ class TextStep(object):
     colors = list(ImageColor.colormap)
 
     for index, origBox in enumerate(self.origImg.getTextData()):
-      origText = origBox['value'].lower()
+      origText = origBox['value'].lower().strip()
 
       OxCenter = (origBox['x0'] + origBox['width']/2)/ow
       OyCenter = (origBox['y0'] + origBox['height']/2)/oh
@@ -475,6 +492,8 @@ def program(specPath, visPath, scale):
   dimensionsStep = DimensionsStep(specImg, origImg, scale)
   dimensionsStep.main()
 
+  exit()
+
   textStep = TextStep(specImg, origImg)
   textStep.main()
 
@@ -489,7 +508,7 @@ def program(specPath, visPath, scale):
 if __name__ == '__main__':
   parser = argparse.ArgumentParser(description='Validate a data visualization against a Vega-Lite specification.')
   parser.add_argument('-v', '--verbose', action='store_true', help='Show verbose output')
-  parser.add_argument('-s', '--scale', metavar='number', nargs=1, type=int, help='Scale of original image', required=False, default=1)
+  parser.add_argument('-s', '--scale', metavar='number', nargs=None, type=int, help='Scale of original image', default=1)
   parser.add_argument('-c', '--spec', metavar='file', nargs=1, type=argparse.FileType('r'), help='Vega-Lite specification', required=True)
   parser.add_argument('-i', '--vis', metavar='file', nargs=1, type=argparse.FileType('r'), help='Data visualization to be validated', required=True)
 
@@ -497,7 +516,7 @@ if __name__ == '__main__':
 
   specPath = args.spec[0].name
   visPath = args.vis[0].name
-  scale = args.scale[0]
+  scale = args.scale
   verbose = args.verbose
 
   if verbose:
