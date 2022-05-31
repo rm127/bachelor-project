@@ -12,6 +12,7 @@ numpy = "*"
 opencv-python-headless = "*"
 argparse = "*"
 scikit-image = "*"
+tabulate = "*"
 
 [dev-packages]
 
