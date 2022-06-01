@@ -522,8 +522,8 @@ class FinalStep(object):
     difference = cv.subtract(specImg, origImg)
 
     # color the mask red
-    Conv_hsv_Gray = cv.cvtColor(difference, cv.COLOR_BGR2GRAY)
-    ret, mask = cv.threshold(Conv_hsv_Gray, 0, 255,cv.THRESH_BINARY_INV | cv.THRESH_OTSU)
+    conv_hsv_gray = cv.cvtColor(difference, cv.COLOR_BGR2GRAY)
+    ret, mask = cv.threshold(conv_hsv_gray, 0, 255,cv.THRESH_BINARY_INV | cv.THRESH_OTSU)
 
     fillColor = [255, 0, 0]
 
