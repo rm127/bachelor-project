@@ -5,6 +5,7 @@ Vega-Lite supports autosizing such that one can specify the dimensions of the ou
 https://vega.github.io/vega/docs/specification/
 
 Example:
+```
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
   "description": "A scatterplot showing body mass and flipper lengths of penguins.",
@@ -33,3 +34,4 @@ Example:
     "shape": {"field": "Species", "type": "nominal"}
   }
 }
+```
