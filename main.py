@@ -29,12 +29,12 @@ class MyViewer(ImageShow.MacViewer):
 
   def save_image(self, image, title):
     path = "tmp/{0}.png".format(title)
-    """Save to temporary file and return filename."""
+    # Save to temporary file and return filename.
     image.save(path)
     return path
 
   def show_image(self, image, title, **options):
-    """Display the given image."""
+    # Display the given image.
     return self.show_file(self.save_image(image, title), **options)
 
 
