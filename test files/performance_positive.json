@@ -1,0 +1,32 @@
+{
+  "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
+  "width": 200,
+  "height": {"step": 16},
+  "data": {"url": "data/movies_altered.json"},
+  "encoding": {
+    "y": {
+      "field": "Major Genre",
+      "type": "nominal",
+      "axis": null
+    }
+  },
+  "layer": [{
+    "mark": {"type": "bar", "color": "#ddd"},
+    "encoding": {
+      "color": {"field": "Major Genre", "legend": null},
+      "opacity": {"value": 0.4},
+      "x": {
+        "aggregate": "mean",
+        "field": "IMDB Rating",
+        "scale": {"domain": [0, 20]},
+        "title": "Mean IMDB Ratings"
+      }
+    }
+  }, {
+    "mark": {"type": "text", "align": "left", "x": 5, "fontSize": 20},
+    "encoding": {
+      "text": {"field": "Major Genre"},
+      "detail": {"aggregate": "count"}
+    }
+  }]
+}
