@@ -129,5 +129,4 @@ dmypy.json
 .pyre/
 
 # Temporary files
-tmp/
 .DS_Store
